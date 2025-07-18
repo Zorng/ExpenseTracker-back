@@ -7,9 +7,12 @@ const Category = sequelize.define('Category', {
         allowNull: false,
         unique: true
     },
-    type: {
-        type: DataTypes.ENUM('income', 'expense'),
-        allowNull: false
+    color: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        validate: {
+            is: /^#[0-9A-Fa-f]{6}$/i  // Validates hex color like #00ffcc
+        }
     }
 });
 
