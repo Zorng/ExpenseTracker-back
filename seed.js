@@ -5,14 +5,7 @@ async function seed() {
     try {
         await db.sequelize.sync({ force: true }); // DEV ONLY — drops all tables
 
-        // 1. Create Categories
-        const categories = await db.Category.bulkCreate([
-            { name: 'Food', color: '#ff5722' },
-            { name: 'Gas', color: '#2196f3' },
-            { name: 'Services', color: '#4caf50' }
-        ]);
-
-        // 2. Create Users
+        // 1. Create Users first
         const users = await Promise.all(
             ['alice', 'bob', 'charlie'].map(async (username, index) => {
                 const hashedPassword = await bcrypt.hash(`pass${index + 1}`, 10);
@@ -24,15 +17,29 @@ async function seed() {
             })
         );
 
+        // 2. Create Categories for each user
+        const allCategories = [];
+        for (const user of users) {
+            const userCategories = await db.Category.bulkCreate([
+                { name: 'Food', color: '#ff5722', userId: user.id },
+                { name: 'Gas', color: '#2196f3', userId: user.id },
+                { name: 'Services', color: '#4caf50', userId: user.id }
+            ]);
+            allCategories.push(...userCategories);
+        }
+
         // 3. Create Records (10 per user)
         const currencies = ['USD', 'KHR'];
         const titles = ['Coffee', 'Lunch', 'Gas Refill', 'Repair', 'Car Wash', 'Subscription'];
 
         const records = [];
 
-        for (const user of users) {
+        for (let userIndex = 0; userIndex < users.length; userIndex++) {
+            const user = users[userIndex];
+            const userCategories = allCategories.filter(cat => cat.userId === user.id);
+            
             for (let i = 0; i < 10; i++) {
-                const category = categories[Math.floor(Math.random() * categories.length)];
+                const category = userCategories[Math.floor(Math.random() * userCategories.length)];
                 const title = titles[Math.floor(Math.random() * titles.length)];
                 const currency = currencies[Math.floor(Math.random() * currencies.length)];
                 const amount = parseFloat((Math.random() * 100).toFixed(2));

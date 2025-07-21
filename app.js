@@ -6,6 +6,7 @@ import {serveSwagger, setupSwagger} from "./config/swagger.js";
 import categoryRoutes from './routes/Category.route.js';
 import userRoutes from './routes/User.route.js';
 import recordRoutes from './routes/Record.route.js';
+import summaryRoutes from './routes/Summary.route.js';
 
 
 dotenv.config();
@@ -22,6 +23,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/records', recordRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/summary', summaryRoutes);
 
 app.get('/', (req, res) => {
     res.send('Expense Tracker API');

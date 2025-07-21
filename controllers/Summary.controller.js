@@ -1,0 +1,407 @@
+import db from "../models/index.js";
+import { Op } from "sequelize";
+
+/**
+ * @openapi
+ * tags:
+ *  - name: Summary
+ *    description: Analytics and Summary Management
+ */
+
+/**
+ * @openapi
+ * /api/summary/monthly:
+ *   get:
+ *     tags: [Summary]
+ *     summary: Get monthly expense summary and category breakdown
+ *     security:
+ *       - mockAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: month
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 12
+ *         description: Month (1-12). Defaults to current month
+ *       - in: query
+ *         name: year
+ *         schema:
+ *           type: integer
+ *           minimum: 2020
+ *           maximum: 2030
+ *         description: Year. Defaults to current year
+ *       - in: query
+ *         name: currency
+ *         schema:
+ *           type: string
+ *           enum: [USD, KHR, ALL]
+ *           default: ALL
+ *         description: Currency filter - USD, KHR, or ALL for both
+ *     responses:
+ *       200:
+ *         description: Monthly summary data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 summary:
+ *                   type: object
+ *                   properties:
+ *                     month:
+ *                       type: integer
+ *                     year:
+ *                       type: integer
+ *                     currency:
+ *                       type: string
+ *                     totalExpenses:
+ *                       type: object
+ *                       properties:
+ *                         USD:
+ *                           type: number
+ *                         KHR:
+ *                           type: number
+ *                     recordCount:
+ *                       type: integer
+ *                     averagePerDay:
+ *                       type: object
+ *                       properties:
+ *                         USD:
+ *                           type: number
+ *                         KHR:
+ *                           type: number
+ *                     isEmpty:
+ *                       type: boolean
+ *                 categoryBreakdown:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       categoryId:
+ *                         type: integer
+ *                       categoryName:
+ *                         type: string
+ *                       categoryColor:
+ *                         type: string
+ *                       totalUSD:
+ *                         type: number
+ *                       totalKHR:
+ *                         type: number
+ *                       recordCount:
+ *                         type: integer
+ *                       percentage:
+ *                         type: number
+ *       400:
+ *         description: Invalid month or year
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ */
+export const getMonthlySummary = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const currentDate = new Date();
+        
+        // Parse and validate parameters
+        const month = parseInt(req.query.month) || (currentDate.getMonth() + 1);
+        const year = parseInt(req.query.year) || currentDate.getFullYear();
+        const currency = req.query.currency || 'ALL';
+        
+        // Validate month and year
+        if (month < 1 || month > 12) {
+            return res.status(400).json({ error: 'Month must be between 1 and 12' });
+        }
+        if (year < 2020 || year > 2030) {
+            return res.status(400).json({ error: 'Year must be between 2020 and 2030' });
+        }
+        
+        // Calculate date range for the selected month
+        const startDate = new Date(year, month - 1, 1);
+        const endDate = new Date(year, month, 0, 23, 59, 59, 999);
+        
+        // Build where conditions
+        let whereConditions = {
+            userId: userId,
+            date: {
+                [Op.gte]: startDate,
+                [Op.lte]: endDate
+            }
+        };
+        
+        // Add currency filter if not 'ALL'
+        if (currency !== 'ALL') {
+            whereConditions.currency = currency;
+        }
+        
+        // Get all records for the month with category information
+        const records = await db.Record.findAll({
+            where: whereConditions,
+            include: [
+                {
+                    model: db.Category,
+                    attributes: ['id', 'name', 'color'],
+                    required: false // Include records without categories
+                }
+            ],
+            order: [['date', 'DESC']]
+        });
+        
+        // Calculate totals by currency
+        const totals = { USD: 0, KHR: 0 };
+        records.forEach(record => {
+            totals[record.currency] += parseFloat(record.amount);
+        });
+        
+        // Round totals to 2 decimal places
+        totals.USD = Math.round(totals.USD * 100) / 100;
+        totals.KHR = Math.round(totals.KHR * 100) / 100;
+        
+        // Calculate days in month for average calculation
+        const daysInMonth = new Date(year, month, 0).getDate();
+        const averagePerDay = {
+            USD: totals.USD / daysInMonth,
+            KHR: totals.KHR / daysInMonth
+        };
+        
+        // Group records by category for breakdown
+        const categoryMap = new Map();
+        
+        records.forEach(record => {
+            const categoryId = record.Category?.id || null;
+            const categoryName = record.Category?.name || 'Uncategorized';
+            const categoryColor = record.Category?.color || '#808080';
+            
+            if (!categoryMap.has(categoryId)) {
+                categoryMap.set(categoryId, {
+                    categoryId,
+                    categoryName,
+                    categoryColor,
+                    totalUSD: 0,
+                    totalKHR: 0,
+                    recordCount: 0
+                });
+            }
+            
+            const categoryData = categoryMap.get(categoryId);
+            categoryData.totalUSD += record.currency === 'USD' ? parseFloat(record.amount) : 0;
+            categoryData.totalKHR += record.currency === 'KHR' ? parseFloat(record.amount) : 0;
+            categoryData.recordCount += 1;
+        });
+        
+        // Convert map to array and calculate percentages
+        const categoryBreakdown = Array.from(categoryMap.values()).map(category => {
+            // Round category totals to 2 decimal places
+            category.totalUSD = Math.round(category.totalUSD * 100) / 100;
+            category.totalKHR = Math.round(category.totalKHR * 100) / 100;
+            
+            const categoryTotal = category.totalUSD + category.totalKHR;
+            const grandTotal = totals.USD + totals.KHR;
+            const percentage = grandTotal > 0 ? (categoryTotal / grandTotal) * 100 : 0;
+            
+            return {
+                ...category,
+                percentage: Math.round(percentage * 100) / 100 // Round to 2 decimal places
+            };
+        });
+        
+        // Sort by total amount (USD + KHR) descending
+        categoryBreakdown.sort((a, b) => (b.totalUSD + b.totalKHR) - (a.totalUSD + a.totalKHR));
+        
+        const summary = {
+            month,
+            year,
+            currency,
+            totalExpenses: totals,
+            recordCount: records.length,
+            averagePerDay: {
+                USD: Math.round(averagePerDay.USD * 100) / 100,
+                KHR: Math.round(averagePerDay.KHR * 100) / 100
+            },
+            isEmpty: records.length === 0
+        };
+        
+        res.json({
+            summary,
+            categoryBreakdown
+        });
+        
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+/**
+ * @openapi
+ * /api/summary/recent-average:
+ *   get:
+ *     tags: [Summary]
+ *     summary: Get average daily expenses for the most recent 3 months
+ *     security:
+ *       - mockAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: currency
+ *         schema:
+ *           type: string
+ *           enum: [USD, KHR, ALL]
+ *           default: ALL
+ *         description: Currency filter - USD, KHR, or ALL for both
+ *     responses:
+ *       200:
+ *         description: Recent 3 months average data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 recentMonths:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       month:
+ *                         type: integer
+ *                       year:
+ *                         type: integer
+ *                       monthName:
+ *                         type: string
+ *                       totalExpenses:
+ *                         type: object
+ *                         properties:
+ *                           USD:
+ *                             type: number
+ *                           KHR:
+ *                             type: number
+ *                       averagePerDay:
+ *                         type: object
+ *                         properties:
+ *                           USD:
+ *                             type: number
+ *                           KHR:
+ *                             type: number
+ *                       recordCount:
+ *                         type: integer
+ *                 overallAverage:
+ *                   type: object
+ *                   properties:
+ *                     USD:
+ *                       type: number
+ *                     KHR:
+ *                       type: number
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ */
+export const getRecentAverage = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const currency = req.query.currency || 'ALL';
+        const currentDate = new Date();
+        
+        const monthNames = [
+            'January', 'February', 'March', 'April', 'May', 'June',
+            'July', 'August', 'September', 'October', 'November', 'December'
+        ];
+        
+        const recentMonths = [];
+        let totalDays = 0;
+        let overallTotals = { USD: 0, KHR: 0 };
+        
+        // Get data for the most recent 3 months
+        for (let i = 0; i < 3; i++) {
+            const targetDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - i, 1);
+            const month = targetDate.getMonth() + 1;
+            const year = targetDate.getFullYear();
+            
+            // Calculate date range for this month
+            const startDate = new Date(year, month - 1, 1);
+            const endDate = new Date(year, month, 0, 23, 59, 59, 999);
+            
+            // Build where conditions
+            let whereConditions = {
+                userId: userId,
+                date: {
+                    [Op.gte]: startDate,
+                    [Op.lte]: endDate
+                }
+            };
+            
+            if (currency !== 'ALL') {
+                whereConditions.currency = currency;
+            }
+            
+            // Get records for this month
+            const records = await db.Record.findAll({
+                where: whereConditions,
+                attributes: ['amount', 'currency']
+            });
+            
+            // Calculate totals for this month
+            const monthTotals = { USD: 0, KHR: 0 };
+            records.forEach(record => {
+                monthTotals[record.currency] += parseFloat(record.amount);
+            });
+            
+            // Round monthly totals to 2 decimal places
+            monthTotals.USD = Math.round(monthTotals.USD * 100) / 100;
+            monthTotals.KHR = Math.round(monthTotals.KHR * 100) / 100;
+            
+            // Calculate days in this month
+            const daysInMonth = new Date(year, month, 0).getDate();
+            totalDays += daysInMonth;
+            
+            // Calculate average per day for this month
+            const averagePerDay = {
+                USD: Math.round((monthTotals.USD / daysInMonth) * 100) / 100,
+                KHR: Math.round((monthTotals.KHR / daysInMonth) * 100) / 100
+            };
+            
+            // Add to overall totals
+            overallTotals.USD += monthTotals.USD;
+            overallTotals.KHR += monthTotals.KHR;
+            
+            recentMonths.push({
+                month,
+                year,
+                monthName: monthNames[month - 1],
+                totalExpenses: monthTotals,
+                averagePerDay,
+                recordCount: records.length
+            });
+        }
+        
+        // Calculate overall average across 3 months
+        const overallAverage = {
+            USD: Math.round((overallTotals.USD / totalDays) * 100) / 100,
+            KHR: Math.round((overallTotals.KHR / totalDays) * 100) / 100
+        };
+        
+        res.json({
+            recentMonths,
+            overallAverage
+        });
+        
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
