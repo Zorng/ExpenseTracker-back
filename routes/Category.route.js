@@ -5,6 +5,8 @@
  *    description: Category Management
  */
 import express from 'express';
+// import mockAuth from '../middleware/mockAuth.js'; // for development
+import { authenticateToken } from '../middleware/auth.js'; //use this for main branch
 import {
     getAllCategories,
     createCategory,
@@ -13,6 +15,10 @@ import {
 } from '../controllers/Category.controller.js';
 
 const router = express.Router();
+
+// Apply mock authentication to all category routes
+// router.use(mockAuth);
+router.use(auth.js);
 
 router.get('/', getAllCategories);
 router.post('/', createCategory);
