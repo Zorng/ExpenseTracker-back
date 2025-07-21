@@ -12,6 +12,8 @@ import db from "../models/index.js";
  *   get:
  *     tags: [Record]
  *     summary: Get all records with pagination and filtering
+ *     security:
+ *       - mockAuth: []
  *     parameters:
  *       - in: query
  *         name: limit
@@ -36,7 +38,7 @@ import db from "../models/index.js";
  *         name: filter
  *         schema:
  *           type: string
- *           enum: [all, amount, currency, date]
+ *           enum: [all, amount, currency, date, category]
  *           default: all
  *         description: |
  *           Filter type:
@@ -44,13 +46,15 @@ import db from "../models/index.js";
  *           - amount: Sort by amount (use sort parameter)
  *           - currency: Filter by currency type
  *           - date: Sort by date (use sort parameter)
+ *           - category: Filter by category name
  *       - in: query
  *         name: value
  *         schema:
  *           type: string
  *         description: |
- *           Filter value (only needed for currency):
+ *           Filter value:
  *           - For currency: USD, KHR
+ *           - For category: Food, Gas, Services (or any category name)
  *     responses:
  *       200:
  *         description: List of records
@@ -83,6 +87,7 @@ import db from "../models/index.js";
  *                   type: string
  */
 export const getAllRecords = async (req,res) => {
+    const userId = req.user.id; // Get authenticated user ID
     const limit = parseInt(req.query.limit) || 10;
     const page = parseInt(req.query.page) || 1;
     const sort = req.query.sort === 'desc' ? 'DESC' : 'ASC';
@@ -93,7 +98,9 @@ export const getAllRecords = async (req,res) => {
 
     try{
         // Build where conditions and order
-        let whereConditions = {};
+        let whereConditions = {
+            userId: userId // Only get records belonging to authenticated user
+        };
         let orderBy = [['id', sort]]; // Default order by id
         
         // Apply filters
@@ -111,6 +118,22 @@ export const getAllRecords = async (req,res) => {
             case 'currency':
                 if (value && (value === 'USD' || value === 'KHR')) {
                     whereConditions.currency = value;
+                }
+                break;
+                
+            case 'category':
+                if (value) {
+                    // Find category by name and filter records
+                    const category = await db.Category.findOne({ 
+                        where: { 
+                            name: value,
+                            userId: userId // Filter by user's categories
+                        } 
+                    });
+                    if (category) {
+                        whereConditions.categoryId = category.id;
+                    }
+                    // If category not found, no records will match (empty result)
                 }
                 break;
                 
@@ -157,6 +180,8 @@ export const getAllRecords = async (req,res) => {
  *   post:
  *     tags: [Record]
  *     summary: Create a new record with optional category
+ *     security:
+ *       - mockAuth: []
  *     description: |
  *       Create a new expense record. For category field:
  *       - Use category names like "Food", "Gas", "Services"
@@ -216,7 +241,7 @@ export const getAllRecords = async (req,res) => {
 
 export const createRecord = async (req, res) => {
     try{
-        // const userId = req.user.id; //to get userId
+        const userId = req.user.id; //to get userId
          const { title, date, currency, amount, category } = req.body;
         
         if (!title || !date || !currency || !amount) {
@@ -228,7 +253,10 @@ export const createRecord = async (req, res) => {
         let categoryId = null;
         if (category) {
             const foundCategory = await db.Category.findOne({ 
-                where: { name: category } 
+                where: { 
+                    name: category,
+                    userId: userId // Only search within user's categories
+                } 
             });
             if (!foundCategory) {
                 return res.status(400).json({ 
@@ -244,8 +272,8 @@ export const createRecord = async (req, res) => {
             currency,
             amount,
             note: req.body.note,
-            categoryId: categoryId
-            //userId:userId //to store in database
+            categoryId: categoryId,
+            userId: userId
         };
         
         const record = await db.Record.create(recordData);
@@ -272,6 +300,13 @@ export const createRecord = async (req, res) => {
  *   put:
  *     tags: [Record]
  *     summary: Update a record
+ *     security:
+ *       - mockAuth: []
+ *     description: |
+ *       Update an existing expense record. All fields are optional:
+ *       - For category field: Use category names like "Food", "Gas", "Services"
+ *       - Set category to null or empty string to remove category
+ *       - Leave category undefined to keep existing category
  *     parameters:
  *       - in: path
  *         name: id
@@ -284,7 +319,34 @@ export const createRecord = async (req, res) => {
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/RecordInput'
+ *             type: object
+ *             properties:
+ *               title:
+ *                 type: string
+ *                 example: "Updated Grocery Shopping"
+ *               date:
+ *                 type: string
+ *                 format: date
+ *                 example: "2025-07-21"
+ *               currency:
+ *                 type: string
+ *                 enum: [USD, KHR]
+ *                 example: "USD"
+ *               amount:
+ *                 type: number
+ *                 format: float
+ *                 example: 30.00
+ *               note:
+ *                 type: string
+ *                 example: "Updated note"
+ *               category:
+ *                 type: string
+ *                 example: "Food"
+ *                 description: |
+ *                   Category name (optional):
+ *                   - Use category names you own like "Food", "Gas", "Services"
+ *                   - Set to null or empty string to remove category
+ *                   - Leave undefined to keep existing category
  *     responses:
  *       200:
  *         description: Record updated successfully
@@ -292,6 +354,24 @@ export const createRecord = async (req, res) => {
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Record'
+ *       400:
+ *         description: Bad request - invalid category or validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *       403:
+ *         description: Forbidden - You don't have permission to update this record
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
  *       404:
  *         description: Record not found
  *         content:
@@ -314,12 +394,70 @@ export const createRecord = async (req, res) => {
 
 export const updateRecord = async (req,res) => {
     try{
-        const record = await db.Record.findByPk(req.params.id);
-        if(!record) {
+        const userId = req.user.id; // Get authenticated user ID
+        const { title, date, currency, amount, note, category } = req.body;
+        
+        // First check if the record exists at all
+        const recordExists = await db.Record.findByPk(req.params.id);
+        
+        if (!recordExists) {
             return res.status(404).json({error: "Record not found"});
         }
-        await record.update(req.body);
-        res.json(record);
+        
+        // Then check if the user has permission to access this record
+        if (recordExists.userId !== userId) {
+            return res.status(403).json({error: "You don't have permission to update this record"});
+        }
+        
+        const record = recordExists; // Use the already found record
+
+        // Handle category update if provided
+        let categoryId = record.categoryId; // Keep existing category by default
+        
+        if (category !== undefined) {
+            if (category === null || category === '') {
+                // User wants to remove category
+                categoryId = null;
+            } else {
+                // User wants to update to a specific category
+                const foundCategory = await db.Category.findOne({ 
+                    where: { 
+                        name: category,
+                        userId: userId // Only search within user's categories
+                    } 
+                });
+                if (!foundCategory) {
+                    return res.status(400).json({ 
+                        error: `Category "${category}" not found. Please create it first or use existing categories.` 
+                    });
+                }
+                categoryId = foundCategory.id;
+            }
+        }
+
+        // Prepare update data
+        const updateData = {};
+        if (title !== undefined) updateData.title = title;
+        if (date !== undefined) updateData.date = date;
+        if (currency !== undefined) updateData.currency = currency;
+        if (amount !== undefined) updateData.amount = amount;
+        if (note !== undefined) updateData.note = note;
+        if (category !== undefined) updateData.categoryId = categoryId;
+
+        // Update the record
+        await record.update(updateData);
+
+        // Return updated record with category information
+        const updatedRecord = await db.Record.findByPk(record.id, {
+            include: [
+                {
+                    model: db.Category,
+                    attributes: ['id', 'name', 'color']
+                }
+            ]
+        });
+
+        res.json(updatedRecord);
     }catch(err) {
         res.status(500).json({ error: err.message });
     }
@@ -331,6 +469,8 @@ export const updateRecord = async (req,res) => {
  *   delete:
  *     tags: [Record]
  *     summary: Delete a record
+ *     security:
+ *       - mockAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -347,6 +487,15 @@ export const updateRecord = async (req,res) => {
  *               type: object
  *               properties:
  *                 message:
+ *                   type: string
+ *       403:
+ *         description: Forbidden - You don't have permission to delete this record
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
  *                   type: string
  *       404:
  *         description: Record not found
@@ -370,8 +519,22 @@ export const updateRecord = async (req,res) => {
 
 export const deleteRecord = async (req,res) => {
     try {
-        const record = await db.Record.findByPk(req.params.id);
-        if(!record) return res.status(404).json({error: "Record not found"});
+        const userId = req.user.id; // Get authenticated user ID
+        
+        // First check if the record exists at all
+        const recordExists = await db.Record.findByPk(req.params.id);
+        
+        if (!recordExists) {
+            return res.status(404).json({error: "Record not found"});
+        }
+        
+        // Then check if the user has permission to access this record
+        if (recordExists.userId !== userId) {
+            return res.status(403).json({error: "You don't have permission to delete this record"});
+        }
+        
+        const record = recordExists; // Use the already found record
+        
         await record.destroy();
         res.json({message: "Record deleted."});        
     }catch(err){
