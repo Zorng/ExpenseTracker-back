@@ -21,6 +21,10 @@ const Record = sequelize.define('Record', {
     note: {
         type: DataTypes.STRING,
         allowNull: true
+    },
+    userId: {
+        type: DataTypes.UUID,
+        allowNull: false
     }
 });
 
