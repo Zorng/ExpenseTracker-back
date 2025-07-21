@@ -1,6 +1,7 @@
 
 import express from 'express';
 import {
+    register,
     login,
     signOut,
     updateEmail,
@@ -10,6 +11,39 @@ import {
 import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
+
+/**
+ * @openapi
+ * /api/users/register:
+ *   post:
+ *     summary: Register a new user
+ *     tags: [User]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - username
+ *               - email
+ *               - password
+ *             properties:
+ *               username:
+ *                 type: string
+ *               email:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: User registered successfully
+ *       400:
+ *         description: Invalid input
+ *       409:
+ *         description: Email already in use
+ */
+router.post('/register', register);
 
 /**
  * @openapi
