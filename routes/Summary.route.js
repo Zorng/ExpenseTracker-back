@@ -5,7 +5,6 @@
  *    description: Analytics and Summary Management
  */
 import express from 'express';
-import { authenticateToken } from '../middleware/auth.js'; //use this for main branch
 import {
     getMonthlySummary,
     getRecentAverage
