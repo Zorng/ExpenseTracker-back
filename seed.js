@@ -8,7 +8,7 @@ async function seed() {
         // 1. Create Users first
         const users = await Promise.all(
             ['alice', 'bob', 'charlie'].map(async (username, index) => {
-                const hashedPassword = await bcrypt.hash(`pass${index + 1}`, 10);
+                const hashedPassword = await bcrypt.hash(`password${index + 1}`, 10);
                 return db.User.create({
                     username,
                     email: `${username}@example.com`,
