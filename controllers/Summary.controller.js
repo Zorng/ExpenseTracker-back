@@ -423,3 +423,150 @@ export const getRecentAverage = async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 };
+
+/**
+ * @openapi
+ * /api/summary/top5:
+ *   get:
+ *     tags: [Summary]
+ *     summary: Get top 5 biggest spending records from the past 3 months
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: displayCurrency
+ *         schema:
+ *           type: string
+ *           enum: [USD, KHR]
+ *           default: USD
+ *         description: Currency to display amounts in (converts using fixed rate)
+ *     responses:
+ *       200:
+ *         description: Top 5 expenses from last 3 months
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 displayCurrency:
+ *                   type: string
+ *                 totalRecords:
+ *                   type: integer
+ *                 top5Expenses:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                       title:
+ *                         type: string
+ *                       amount:
+ *                         type: number
+ *                         description: Amount converted to display currency
+ *                       originalAmount:
+ *                         type: number
+ *                       originalCurrency:
+ *                         type: string
+ *                       date:
+ *                         type: string
+ *                         format: date
+ *                       categoryName:
+ *                         type: string
+ *                       categoryColor:
+ *                         type: string
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ */
+export const getTop5Expenses = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const displayCurrency = req.query.displayCurrency || 'USD';
+        const currentDate = new Date();
+        
+        // Calculate date range for the past 3 months
+        const threeMonthsAgo = new Date(currentDate);
+        threeMonthsAgo.setMonth(currentDate.getMonth() - 3);
+        threeMonthsAgo.setDate(1); // Start from first day of the month 3 months ago
+        threeMonthsAgo.setHours(0, 0, 0, 0);
+        
+        const endDate = new Date(currentDate);
+        endDate.setHours(23, 59, 59, 999);
+        
+        // Build where conditions
+        let whereConditions = {
+            userId: userId,
+            date: {
+                [Op.gte]: threeMonthsAgo,
+                [Op.lte]: endDate
+            }
+        };
+        
+        // Get all records from the past 3 months with category information
+        const records = await db.Record.findAll({
+            where: whereConditions,
+            include: [
+                {
+                    model: db.Category,
+                    attributes: ['id', 'name', 'color'],
+                    required: false // Include records without categories
+                }
+            ],
+            attributes: ['id', 'title', 'amount', 'currency', 'date', 'note'],
+            order: [['date', 'DESC']]
+        });
+        
+        // Convert amounts to display currency and sort by converted amount
+        const recordsWithConvertedAmounts = records.map(record => {
+            let convertedAmount;
+            
+            if (record.currency === displayCurrency) {
+                convertedAmount = parseFloat(record.amount);
+            } else if (displayCurrency === 'USD' && record.currency === 'KHR') {
+                convertedAmount = parseFloat(record.amount) * EXCHANGE_RATES.KHR_TO_USD;
+            } else if (displayCurrency === 'KHR' && record.currency === 'USD') {
+                convertedAmount = parseFloat(record.amount) * EXCHANGE_RATES.USD_TO_KHR;
+            } else {
+                convertedAmount = parseFloat(record.amount);
+            }
+            
+            return {
+                id: record.id,
+                title: record.title,
+                amount: Math.round(convertedAmount * 100) / 100, // Converted amount
+                originalAmount: parseFloat(record.amount),
+                originalCurrency: record.currency,
+                date: record.date.toISOString().split('T')[0], // Format as YYYY-MM-DD
+                categoryName: record.Category?.name || 'Uncategorized',
+                categoryColor: record.Category?.color || '#808080',
+                convertedAmount: convertedAmount // For sorting
+            };
+        });
+        
+        // Sort by converted amount descending and limit to top 5
+        const top5Expenses = recordsWithConvertedAmounts
+            .sort((a, b) => b.convertedAmount - a.convertedAmount)
+            .slice(0, 5)
+            .map(record => {
+                // Remove the convertedAmount field from final response
+                const { convertedAmount, ...recordWithoutSortField } = record;
+                return recordWithoutSortField;
+            });
+        
+        res.json({
+            displayCurrency,
+            totalRecords: records.length,
+            top5Expenses
+        });
+        
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
