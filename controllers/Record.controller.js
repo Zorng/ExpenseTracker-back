@@ -1,4 +1,19 @@
 import db from "../models/index.js";
+import { Op } from 'sequelize';
+
+// Currency conversion rates
+const EXCHANGE_RATES = {
+    USD_TO_KHR: 4000, // 1 USD = 4000 KHR
+    KHR_TO_USD: 0.00025 // 1 KHR = 0.00025 USD
+};
+
+// Helper function to convert amounts to a base currency (USD) for comparison
+const convertToBaseCurrency = (amount, currency) => {
+    if (currency === 'USD') return parseFloat(amount);
+    if (currency === 'KHR') return parseFloat(amount) * EXCHANGE_RATES.KHR_TO_USD;
+    return parseFloat(amount);
+};
+
 /**
  * @openapi
  * tags:
@@ -11,22 +26,22 @@ import db from "../models/index.js";
  * /api/records:
  *   get:
  *     tags: [Record]
- *     summary: Get all records with pagination and filtering
+ *     summary: Get all records with pagination and advanced filtering
  *     security:
- *       - mockAuth: []
+ *       - bearerAuth: []
  *     parameters:
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *           default: 10
- *         description: Number of records per page
  *       - in: query
  *         name: page
  *         schema:
  *           type: integer
  *           default: 1
  *         description: Page number
+ *       - in: query
+ *         name: pageSize
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Number of records per page
  *       - in: query
  *         name: sort
  *         schema:
@@ -35,26 +50,49 @@ import db from "../models/index.js";
  *           default: asc
  *         description: Sort order
  *       - in: query
- *         name: filter
+ *         name: sortBy
  *         schema:
  *           type: string
- *           enum: [all, amount, currency, date, category]
- *           default: all
- *         description: |
- *           Filter type:
- *           - all: Show all records
- *           - amount: Sort by amount (use sort parameter)
- *           - currency: Filter by currency type
- *           - date: Sort by date (use sort parameter)
- *           - category: Filter by category name
+ *           enum: [id, amount, date, title]
+ *           default: id
+ *         description: Field to sort by
  *       - in: query
- *         name: value
+ *         name: categoryId
+ *         schema:
+ *           type: integer
+ *         description: Filter by category ID (more efficient for large datasets)
+ *       - in: query
+ *         name: minAmount
+ *         schema:
+ *           type: number
+ *         description: Minimum amount filter (automatically converts between currencies)
+ *       - in: query
+ *         name: maxAmount
+ *         schema:
+ *           type: number
+ *         description: Maximum amount filter (automatically converts between currencies)
+ *       - in: query
+ *         name: startDate
  *         schema:
  *           type: string
+ *           format: date
+ *         description: Start date filter (YYYY-MM-DD)
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: End date filter (YYYY-MM-DD)
+ *       - in: query
+ *         name: amountCurrency
+ *         schema:
+ *           type: string
+ *           enum: [USD, KHR]
+ *           default: USD
  *         description: |
- *           Filter value:
- *           - For currency: USD, KHR
- *           - For category: Food, Gas, Services (or any category name)
+ *           Currency unit for amount filters (default: USD).
+ *           System automatically includes equivalent amounts in both currencies.
+ *           Example: minAmount=100&amountCurrency=USD will include records ≥100 USD OR ≥400,000 KHR
  *     responses:
  *       200:
  *         description: List of records
@@ -88,60 +126,110 @@ import db from "../models/index.js";
  */
 export const getAllRecords = async (req,res) => {
     const userId = req.user.id; // Get authenticated user ID
-    const limit = parseInt(req.query.limit) || 10;
     const page = parseInt(req.query.page) || 1;
+    const pageSize = parseInt(req.query.pageSize) || 10;
     const sort = req.query.sort === 'desc' ? 'DESC' : 'ASC';
+    const sortBy = req.query.sortBy || 'id';
     
     // Filter parameters
-    const filter = req.query.filter || 'all';
-    const value = req.query.value;
+    const categoryId = req.query.categoryId;
+    const minAmount = req.query.minAmount;
+    const maxAmount = req.query.maxAmount;
+    const startDate = req.query.startDate;
+    const endDate = req.query.endDate;
+    const amountCurrency = req.query.amountCurrency;
 
     try{
-        // Build where conditions and order
         let whereConditions = {
             userId: userId // Only get records belonging to authenticated user
         };
-        let orderBy = [['id', sort]]; // Default order by id
         
-        // Apply filters
-        switch(filter) {
-            case 'amount':
-                // Sort by amount instead of id
-                orderBy = [['amount', sort]];
-                break;
-                
-            case 'date':
-                // Sort by date instead of id
-                orderBy = [['date', sort]];
-                break;
-                
-            case 'currency':
-                if (value && (value === 'USD' || value === 'KHR')) {
-                    whereConditions.currency = value;
-                }
-                break;
-                
-            case 'category':
-                if (value) {
-                    // Find category by name and filter records
-                    const category = await db.Category.findOne({ 
-                        where: { 
-                            name: value,
-                            userId: userId // Filter by user's categories
-                        } 
-                    });
-                    if (category) {
-                        whereConditions.categoryId = category.id;
-                    }
-                    // If category not found, no records will match (empty result)
-                }
-                break;
-                
-            case 'all':
-            default:
-                // No filtering, use default ordering
-                break;
+        // Apply category filter by ID (optimized for performance)
+        if (categoryId) {
+            // Direct category ID filtering - much faster than name lookup
+            whereConditions.categoryId = parseInt(categoryId);
         }
+        
+        // Apply amount range filter with currency conversion
+        if (minAmount || maxAmount) {
+            // Convert filter amounts to base currency (USD) for comparison
+            const minAmountUSD = minAmount ? convertToBaseCurrency(minAmount, amountCurrency || 'USD') : null;
+            const maxAmountUSD = maxAmount ? convertToBaseCurrency(maxAmount, amountCurrency || 'USD') : null;
+            
+            // Create complex where condition that handles both currencies
+            const amountConditions = [];
+            
+            if (minAmountUSD !== null && maxAmountUSD !== null) {
+                // Both min and max specified
+                amountConditions.push({
+                    [Op.and]: [
+                        { currency: 'USD' },
+                        { amount: { [Op.gte]: minAmountUSD, [Op.lte]: maxAmountUSD } }
+                    ]
+                });
+                amountConditions.push({
+                    [Op.and]: [
+                        { currency: 'KHR' },
+                        { amount: { [Op.gte]: minAmountUSD * EXCHANGE_RATES.USD_TO_KHR, [Op.lte]: maxAmountUSD * EXCHANGE_RATES.USD_TO_KHR } }
+                    ]
+                });
+            } else if (minAmountUSD !== null) {
+                // Only min specified
+                amountConditions.push({
+                    [Op.and]: [
+                        { currency: 'USD' },
+                        { amount: { [Op.gte]: minAmountUSD } }
+                    ]
+                });
+                amountConditions.push({
+                    [Op.and]: [
+                        { currency: 'KHR' },
+                        { amount: { [Op.gte]: minAmountUSD * EXCHANGE_RATES.USD_TO_KHR } }
+                    ]
+                });
+            } else if (maxAmountUSD !== null) {
+                // Only max specified
+                amountConditions.push({
+                    [Op.and]: [
+                        { currency: 'USD' },
+                        { amount: { [Op.lte]: maxAmountUSD } }
+                    ]
+                });
+                amountConditions.push({
+                    [Op.and]: [
+                        { currency: 'KHR' },
+                        { amount: { [Op.lte]: maxAmountUSD * EXCHANGE_RATES.USD_TO_KHR } }
+                    ]
+                });
+            }
+            
+            if (amountConditions.length > 0) {
+                whereConditions[Op.and] = whereConditions[Op.and] || [];
+                whereConditions[Op.and].push({ [Op.or]: amountConditions });
+            }
+        }
+        
+        // Note: Currency filtering is now handled in the amount range filter above
+        // No separate currency filter needed
+        
+        // Apply date range filter
+        if (startDate || endDate) {
+            whereConditions.date = {};
+            if (startDate) {
+                whereConditions.date[Op.gte] = new Date(startDate);
+            }
+            if (endDate) {
+                // Add time to end date to include the entire day
+                const endDateTime = new Date(endDate);
+                endDateTime.setHours(23, 59, 59, 999);
+                whereConditions.date[Op.lte] = endDateTime;
+            }
+        }
+        
+        // Validate sortBy field
+        const validSortFields = ['id', 'amount', 'date', 'title'];
+        const orderField = validSortFields.includes(sortBy) ? sortBy : 'id';
+        const orderBy = [[orderField, sort]];
 
         const total = await db.Record.count({ where: whereConditions });
         const records = await db.Record.findAll({
@@ -152,8 +240,8 @@ export const getAllRecords = async (req,res) => {
                     attributes: ['id', 'name', 'color']
                 }
             ],
-            limit,
-            offset: (page - 1) * limit,
+            limit: pageSize,
+            offset: (page - 1) * pageSize,
             order: orderBy
         });
         
@@ -161,10 +249,17 @@ export const getAllRecords = async (req,res) => {
             meta: {
                 totalItems: total,
                 page,
-                totalPages: Math.ceil(total / limit),
+                pageSize,
+                totalPages: Math.ceil(total / pageSize),
                 filters: {
-                    filter: filter,
-                    value: value || null
+                    categoryId: categoryId ? parseInt(categoryId) : null,
+                    minAmount: minAmount ? parseFloat(minAmount) : null,
+                    maxAmount: maxAmount ? parseFloat(maxAmount) : null,
+                    startDate: startDate || null,
+                    endDate: endDate || null,
+                    amountCurrency: amountCurrency || null,
+                    sortBy: orderField,
+                    sort: sort
                 }
             },
             data: records,
@@ -181,7 +276,7 @@ export const getAllRecords = async (req,res) => {
  *     tags: [Record]
  *     summary: Create a new record with optional category
  *     security:
- *       - mockAuth: []
+ *       - bearerAuth: []
  *     description: |
  *       Create a new expense record. For category field:
  *       - Use category names like "Food", "Gas", "Services"
@@ -215,12 +310,9 @@ export const getAllRecords = async (req,res) => {
  *                 example: "Weekly groceries"
  *               category:
  *                 type: string
+ *                 enum: [Food, Gas, Services]
  *                 example: "Food"
- *                 description: |
- *                   Category name (optional):
- *                   - Use category names like "Food", "Gas", "Services"
- *                   - Or any category name you've created via POST /api/categories
- *                   - Leave empty for no category
+ *                 description: Category name (optional dropdown selection)
  *     responses:
  *       201:
  *         description: Record created successfully
@@ -301,7 +393,7 @@ export const createRecord = async (req, res) => {
  *     tags: [Record]
  *     summary: Update a record
  *     security:
- *       - mockAuth: []
+ *       - bearerAuth: []
  *     description: |
  *       Update an existing expense record. All fields are optional:
  *       - For category field: Use category names like "Food", "Gas", "Services"
@@ -341,12 +433,9 @@ export const createRecord = async (req, res) => {
  *                 example: "Updated note"
  *               category:
  *                 type: string
+ *                 enum: [Food, Gas, Services]
  *                 example: "Food"
- *                 description: |
- *                   Category name (optional):
- *                   - Use category names you own like "Food", "Gas", "Services"
- *                   - Set to null or empty string to remove category
- *                   - Leave undefined to keep existing category
+ *                 description: Category name (optional dropdown selection, or null to remove category)
  *     responses:
  *       200:
  *         description: Record updated successfully
@@ -470,7 +559,7 @@ export const updateRecord = async (req,res) => {
  *     tags: [Record]
  *     summary: Delete a record
  *     security:
- *       - mockAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id

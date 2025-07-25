@@ -8,7 +8,7 @@ async function seed() {
         // 1. Create Users first
         const users = await Promise.all(
             ['alice', 'bob', 'charlie'].map(async (username, index) => {
-                const hashedPassword = await bcrypt.hash(`password${index + 1}`, 10);
+                const hashedPassword = await bcrypt.hash(`pass${index + 1}`, 10);
                 return db.User.create({
                     username,
                     email: `${username}@example.com`,
@@ -42,7 +42,15 @@ async function seed() {
                 const category = userCategories[Math.floor(Math.random() * userCategories.length)];
                 const title = titles[Math.floor(Math.random() * titles.length)];
                 const currency = currencies[Math.floor(Math.random() * currencies.length)];
-                const amount = parseFloat((Math.random() * 100).toFixed(2));
+                
+                // Generate realistic amounts based on currency
+                let amount;
+                if (currency === 'USD') {
+                    amount = parseFloat((Math.random() * 100 + 5).toFixed(2)); // $5-$105
+                } else { // KHR
+                    amount = parseFloat((Math.random() * 400000 + 20000).toFixed(2)); // 20,000-420,000 KHR
+                }
+                
                 const date = new Date(2025, 6, 1 + i).toISOString().split('T')[0]; // July 1-10, 2025
 
                 records.push({
