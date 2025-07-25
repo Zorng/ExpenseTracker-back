@@ -275,3 +275,20 @@ export const resetPassword = async (req, res) => {
         return res.status(500).json({ error: "Error resetting password" });
     }
 };
+
+export const getUser = async (req, res) => {
+    const token = req.headers.authorization?.split(' ')[1];
+    //console.log(token);
+    if (!token) {
+        return res.status(401).json({error: 'Token not found'});
+    } else {
+        try {
+            const payload = jwt.verify(token, process.env.JWT_SECRET);
+            // Optionally fetch user from DB using payload.id
+            const userResult = await User.findByPk(payload.id, {attributes: {exclude: ['password', 'resetPasswordToken', 'resetPasswordExpires']}});
+            res.json({user: userResult}); // Or { user: dbUser }
+        } catch (err) {
+            res.status(401).json({message: 'Invalid or expired token'});
+        }
+    }
+};
