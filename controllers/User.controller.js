@@ -171,7 +171,37 @@ export const forgotPassword = async (req, res) => {
 
             // For frontend URL, ensure you have set it in your .env file
 
-            // const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
+            const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
+            
+            await transporter.sendMail({
+                from: process.env.EMAIL_USERNAME,
+                to: user.email,
+                subject: 'Password Reset Request',
+                html: `
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                        <h2 style="color: #2563eb;">Password Reset Request</h2>
+                        <p>Hello,</p>
+                        <p>We received a request to reset your password. Click the button below to create a new password:</p>
+                        <div style="text-align: center; margin: 30px 0;">
+                            <a href="${resetUrl}" 
+                               style="background-color: #2563eb; color: white; padding: 12px 24px; 
+                                      text-decoration: none; border-radius: 5px; display: inline-block;">
+                                Reset Password
+                            </a>
+                        </div>
+                        <p>This link will expire in 1 hour for security reasons.</p>
+                        <p>If you didn't request this password reset, you can safely ignore this email.</p>
+                        <hr style="border: 1px solid #eee; margin: 20px 0;">
+                        <p style="color: #666; font-size: 12px;">
+                            This is an automated email, please do not reply.
+                        </p>
+                    </div>
+                `
+            });
+
+            // For Swagger testing
+
+            // const resetUrl = `http://localhost:5000/api/users/reset-password`;
             
             // await transporter.sendMail({
             //     from: process.env.EMAIL_USERNAME,
@@ -179,41 +209,24 @@ export const forgotPassword = async (req, res) => {
             //     subject: 'Password Reset Request',
             //     html: `
             //         <h2>Password Reset Request</h2>
-            //         <p>Please click the link below to reset your password:</p>
-            //         <a href="${resetUrl}">${resetUrl}</a>
-            //         <p>This link will expire in 1 hour.</p>
+            //         <p>Your reset token is: <strong>${resetToken}</strong></p>
+            //         <p>To reset your password:</p>
+            //         <ol>
+            //             <li>Go to: ${resetUrl}</li>
+            //             <li>Click "Try it out"</li>
+            //             <li>Enter your token and new password in the request body:</li>
+            //             <pre>
+            //             {
+            //                 "token": "${resetToken}",
+            //                 "newPassword": "your-new-password"
+            //             }
+            //             </pre>
+            //             <li>Click "Execute"</li>
+            //         </ol>
+            //         <p>This token will expire in 1 hour.</p>
             //         <p>If you did not request this, please ignore this email.</p>
             //     `
             // });
-
-            // For Swagger testing
-            
-            const resetUrl = `http://localhost:5000/api/users/reset-password`;
-            
-            await transporter.sendMail({
-                from: process.env.EMAIL_USERNAME,
-                to: user.email,
-                subject: 'Password Reset Request',
-                html: `
-                    <h2>Password Reset Request</h2>
-                    <p>Your reset token is: <strong>${resetToken}</strong></p>
-                    <p>To reset your password:</p>
-                    <ol>
-                        <li>Go to: ${resetUrl}</li>
-                        <li>Click "Try it out"</li>
-                        <li>Enter your token and new password in the request body:</li>
-                        <pre>
-                        {
-                            "token": "${resetToken}",
-                            "newPassword": "your-new-password"
-                        }
-                        </pre>
-                        <li>Click "Execute"</li>
-                    </ol>
-                    <p>This token will expire in 1 hour.</p>
-                    <p>If you did not request this, please ignore this email.</p>
-                `
-            });
         }
 
         // Always return same message for security
@@ -239,7 +252,9 @@ export const resetPassword = async (req, res) => {
         });
 
         if (!user) {
-            return res.status(400).json({ error: "Invalid or expired reset token" });
+            return res.status(400).json({ 
+                message: "Reset failed. The link may be invalid or expired."
+            });
         }
 
         if (newPassword.length < 6) {
