@@ -7,7 +7,8 @@
 import express from 'express';
 import {
     getMonthlySummary,
-    getRecentAverage
+    getRecentAverage,
+    getTop5Expenses
 } from '../controllers/Summary.controller.js';
 import { authenticateToken } from '../middleware/auth.js';
 
@@ -19,5 +20,6 @@ router.use(authenticateToken);
 // Summary routes
 router.get('/monthly', getMonthlySummary);
 router.get('/recent-average', getRecentAverage);
+router.get('/top5', getTop5Expenses);
 
 export default router;
