@@ -57,11 +57,10 @@ const convertToBaseCurrency = (amount, currency) => {
  *           default: id
  *         description: Field to sort by
  *       - in: query
- *         name: category
+ *         name: categoryId
  *         schema:
- *           type: string
- *           enum: [Food, Gas, Services]
- *         description: Filter by category name (dropdown selection)
+ *           type: integer
+ *         description: Filter by category ID (more efficient for large datasets)
  *       - in: query
  *         name: minAmount
  *         schema:
@@ -133,7 +132,7 @@ export const getAllRecords = async (req,res) => {
     const sortBy = req.query.sortBy || 'id';
     
     // Filter parameters
-    const category = req.query.category;
+    const categoryId = req.query.categoryId;
     const minAmount = req.query.minAmount;
     const maxAmount = req.query.maxAmount;
     const startDate = req.query.startDate;
@@ -145,39 +144,10 @@ export const getAllRecords = async (req,res) => {
             userId: userId // Only get records belonging to authenticated user
         };
         
-        // Apply category filter
-        if (category) {
-            // Find category by name and filter records
-            const foundCategory = await db.Category.findOne({ 
-                where: { 
-                    name: category,
-                    userId: userId // Filter by user's categories
-                } 
-            });
-            if (foundCategory) {
-                whereConditions.categoryId = foundCategory.id;
-            } else {
-                // If category not found, return empty result
-                return res.json({
-                    meta: {
-                        totalItems: 0,
-                        page,
-                        pageSize,
-                        totalPages: 0,
-                        filters: {
-                            category: category,
-                            minAmount: minAmount ? parseFloat(minAmount) : null,
-                            maxAmount: maxAmount ? parseFloat(maxAmount) : null,
-                            startDate: startDate || null,
-                            endDate: endDate || null,
-                            amountCurrency: amountCurrency || null,
-                            sortBy: req.query.sortBy || 'id',
-                            sort: sort
-                        }
-                    },
-                    data: [],
-                });
-            }
+        // Apply category filter by ID (optimized for performance)
+        if (categoryId) {
+            // Direct category ID filtering - much faster than name lookup
+            whereConditions.categoryId = parseInt(categoryId);
         }
         
         // Apply amount range filter with currency conversion
@@ -282,7 +252,7 @@ export const getAllRecords = async (req,res) => {
                 pageSize,
                 totalPages: Math.ceil(total / pageSize),
                 filters: {
-                    category: category || null,
+                    categoryId: categoryId ? parseInt(categoryId) : null,
                     minAmount: minAmount ? parseFloat(minAmount) : null,
                     maxAmount: maxAmount ? parseFloat(maxAmount) : null,
                     startDate: startDate || null,

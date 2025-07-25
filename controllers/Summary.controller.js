@@ -537,13 +537,25 @@ export const getTop5Expenses = async (req, res) => {
                 convertedAmount = parseFloat(record.amount);
             }
             
+            // Handle date formatting
+            let formattedDate;
+            if (record.date instanceof Date) {
+                formattedDate = record.date.toISOString().split('T')[0];
+            } else if (typeof record.date === 'string') {
+                // If it's already a string, try to format it properly
+                const dateObj = new Date(record.date);
+                formattedDate = dateObj.toISOString().split('T')[0];
+            } else {
+                formattedDate = record.date; // Fallback to whatever it is
+            }
+            
             return {
                 id: record.id,
                 title: record.title,
                 amount: Math.round(convertedAmount * 100) / 100, // Converted amount
                 originalAmount: parseFloat(record.amount),
                 originalCurrency: record.currency,
-                date: record.date.toISOString().split('T')[0], // Format as YYYY-MM-DD
+                date: formattedDate, // Safely formatted date
                 categoryName: record.Category?.name || 'Uncategorized',
                 categoryColor: record.Category?.color || '#808080',
                 convertedAmount: convertedAmount // For sorting
@@ -567,6 +579,7 @@ export const getTop5Expenses = async (req, res) => {
         });
         
     } catch (err) {
+        console.error('Error in getTop5Expenses:', err);
         res.status(500).json({ error: err.message });
     }
 };
