@@ -8,7 +8,8 @@ import {
     updatePassword,
     deleteAccount,
     forgotPassword,
-    resetPassword
+    resetPassword,
+    getUser
 } from '../controllers/User.controller.js';
 import { authenticateToken } from '../middleware/auth.js';
 
@@ -244,5 +245,7 @@ router.post('/forgot-password', forgotPassword);
  *         description: Invalid input or token expired
  */
 router.post('/reset-password', resetPassword);
+
+router.get('/me', authenticateToken, getUser);
 
 export default router; 
