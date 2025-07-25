@@ -7,6 +7,8 @@ import {
     updateEmail,
     updatePassword,
     deleteAccount,
+    forgotPassword,
+    resetPassword
 } from '../controllers/User.controller.js';
 import { authenticateToken } from '../middleware/auth.js';
 
@@ -188,5 +190,59 @@ router.put('/me/password', authenticateToken, updatePassword);
  *         description: Error deleting account
  */
 router.delete('/me', authenticateToken, deleteAccount);
+
+/**
+ * @openapi
+ * /api/users/forgot-password:
+ *   post:
+ *     summary: Request password reset
+ *     tags: [User]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Password reset email sent successfully
+ *       404:
+ *         description: User not found
+ */
+router.post('/forgot-password', forgotPassword);
+
+/**
+ * @openapi
+ * /api/users/reset-password:
+ *   post:
+ *     summary: Reset user password
+ *     tags: [User]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - token
+ *               - newPassword
+ *               - confirmNewPassword
+ *             properties:
+ *               token:
+ *                 type: string
+ *               newPassword:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Password reset successfully
+ *       400:
+ *         description: Invalid input or token expired
+ */
+router.post('/reset-password', resetPassword);
 
 export default router; 
