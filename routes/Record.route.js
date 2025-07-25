@@ -5,7 +5,7 @@
  *    description: Record Management
  */
 import express from 'express';
-import { authenticateToken } from '../middleware/auth.js'; //use this for main branch
+import { authenticateToken } from '../middleware/auth.js';
 import {
     getAllRecords,
     createRecord,
@@ -15,9 +15,8 @@ import {
 
 const router = express.Router();
 
-// Apply mock authentication to all record routes
+// Apply authentication to all record routes
 router.use(authenticateToken);
-
 
 router.get('/', getAllRecords);
 router.post('/', createRecord);

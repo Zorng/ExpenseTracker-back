@@ -1,6 +1,19 @@
 import db from "../models/index.js";
 import { Op } from "sequelize";
 
+// Currency conversion rates (should match Record controller)
+const EXCHANGE_RATES = {
+    USD_TO_KHR: 4000, // 1 USD = 4000 KHR
+    KHR_TO_USD: 0.00025 // 1 KHR = 0.00025 USD
+};
+
+// Helper function to convert amounts to USD for percentage calculations
+const convertToUSD = (amount, currency) => {
+    if (currency === 'USD') return parseFloat(amount);
+    if (currency === 'KHR') return parseFloat(amount) * EXCHANGE_RATES.KHR_TO_USD;
+    return parseFloat(amount);
+};
+
 /**
  * @openapi
  * tags:
@@ -15,7 +28,7 @@ import { Op } from "sequelize";
  *     tags: [Summary]
  *     summary: Get monthly expense summary and category breakdown
  *     security:
- *       - mockAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: month
@@ -208,9 +221,10 @@ export const getMonthlySummary = async (req, res) => {
             category.totalUSD = Math.round(category.totalUSD * 100) / 100;
             category.totalKHR = Math.round(category.totalKHR * 100) / 100;
             
-            const categoryTotal = category.totalUSD + category.totalKHR;
-            const grandTotal = totals.USD + totals.KHR;
-            const percentage = grandTotal > 0 ? (categoryTotal / grandTotal) * 100 : 0;
+            // Convert to USD for accurate percentage calculation
+            const categoryTotalUSD = category.totalUSD + (category.totalKHR * EXCHANGE_RATES.KHR_TO_USD);
+            const grandTotalUSD = totals.USD + (totals.KHR * EXCHANGE_RATES.KHR_TO_USD);
+            const percentage = grandTotalUSD > 0 ? (categoryTotalUSD / grandTotalUSD) * 100 : 0;
             
             return {
                 ...category,
@@ -218,8 +232,12 @@ export const getMonthlySummary = async (req, res) => {
             };
         });
         
-        // Sort by total amount (USD + KHR) descending
-        categoryBreakdown.sort((a, b) => (b.totalUSD + b.totalKHR) - (a.totalUSD + a.totalKHR));
+        // Sort by total amount (converted to USD for fair comparison) descending
+        categoryBreakdown.sort((a, b) => {
+            const aTotalUSD = a.totalUSD + (a.totalKHR * EXCHANGE_RATES.KHR_TO_USD);
+            const bTotalUSD = b.totalUSD + (b.totalKHR * EXCHANGE_RATES.KHR_TO_USD);
+            return bTotalUSD - aTotalUSD;
+        });
         
         const summary = {
             month,
@@ -251,7 +269,7 @@ export const getMonthlySummary = async (req, res) => {
  *     tags: [Summary]
  *     summary: Get average daily expenses for the most recent 3 months
  *     security:
- *       - mockAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: currency
