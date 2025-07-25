@@ -13,7 +13,7 @@ import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// Apply mock authentication to all summary routes
+// Apply authentication to all summary routes
 router.use(authenticateToken);
 
 // Summary routes
