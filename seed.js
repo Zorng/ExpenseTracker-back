@@ -3,7 +3,7 @@ import db from './models/index.js';
 
 async function seed() {
     try {
-        await db.sequelize.sync();
+        await db.sequelize.sync({force: true});
 
         // 1. Create Users first
         const users = await Promise.all(
