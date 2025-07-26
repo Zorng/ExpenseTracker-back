@@ -20,14 +20,12 @@ app.use(cors({
 app.use(express.json());
 
 app.use('/docs', serveSwagger, setupSwagger);
-app.use('/api/categories', categoryRoutes);
-app.use('/api/users', userRoutes);
 
 // Routes
-app.use('/api/categories', categoryRoutes);
-app.use('/api/records', recordRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/summary', summaryRoutes);
+app.use('/categories', categoryRoutes);
+app.use('/records', recordRoutes);
+app.use('/users', userRoutes);
+app.use('/summary', summaryRoutes);
 
 app.get('/', (req, res) => {
     res.send('Expense Tracker API');
