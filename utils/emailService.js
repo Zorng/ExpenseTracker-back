@@ -10,6 +10,15 @@ const transporter = nodemailer.createTransport({
     }
 });
 
+// Verify email configuration on startup
+transporter.verify(function(error, success) {
+    if (error) {
+        console.log('Email configuration error:', error);
+    } else {
+        console.log('Email server is ready to send messages');
+    }
+});
+
 export const sendVerificationEmail = async (email, token) => {
     const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${token}`;
     
@@ -30,8 +39,12 @@ export const sendVerificationEmail = async (email, token) => {
 
     try {
         await transporter.sendMail(mailOptions);
+        console.log('Verification email sent successfully to:', email);
     } catch (error) {
         console.error('Error sending email:', error);
+        if (error.code === 'EAUTH') {
+            throw new Error('Email authentication failed. Please check your email credentials.');
+        }
         throw new Error('Failed to send verification email');
     }
 };
