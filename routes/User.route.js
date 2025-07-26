@@ -9,9 +9,12 @@ import {
     deleteAccount,
     forgotPassword,
     resetPassword,
-    getUser
+    getUser,
+    verifyEmail,
+    resendVerification
 } from '../controllers/User.controller.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { requireVerification } from '../middleware/emailVerification.js';
 
 const router = express.Router();
 
@@ -127,7 +130,7 @@ router.post('/signout', signOut);
  *       409:
  *         description: Email already in use
  */
-router.put('/me/email', authenticateToken, updateEmail);
+router.put('/me/email', authenticateToken, requireVerification, updateEmail);
 
 /**
  * @openapi
@@ -168,7 +171,7 @@ router.put('/me/email', authenticateToken, updateEmail);
  *       404:
  *         description: User not found
  */
-router.put('/me/password', authenticateToken, updatePassword);
+router.put('/me/password', authenticateToken, requireVerification, updatePassword);
 
 /**
  * @openapi
@@ -190,7 +193,7 @@ router.put('/me/password', authenticateToken, updatePassword);
  *       500:
  *         description: Error deleting account
  */
-router.delete('/me', authenticateToken, deleteAccount);
+router.delete('/me', authenticateToken, requireVerification, deleteAccount);
 
 /**
  * @openapi
@@ -247,5 +250,50 @@ router.post('/forgot-password', forgotPassword);
 router.post('/reset-password', resetPassword);
 
 router.get('/me', authenticateToken, getUser);
+
+/**
+ * @openapi
+ * /api/users/verify-email:
+ *   get:
+ *     summary: Verify user email
+ *     tags: [User]
+ *     parameters:
+ *       - in: query
+ *         name: token
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Email verified successfully
+ *       400:
+ *         description: Invalid or expired token
+ */
+router.post('/verify-email', verifyEmail);
+
+/**
+ * @openapi
+ * /api/users/resend-verification-email:
+ *   post:
+ *     summary: Resend email verification link
+ *     tags: [User]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Verification email sent successfully
+ *       404:
+ *         description: User not found or already verified
+ */
+router.post('/resend-verification', resendVerification);
 
 export default router; 
