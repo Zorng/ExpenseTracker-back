@@ -222,8 +222,8 @@ export const getMonthlySummary = async (req, res) => {
             category.totalKHR = Math.round(category.totalKHR * 100) / 100;
             
             // Convert to USD for accurate percentage calculation
-            const categoryTotalUSD = category.totalUSD + (category.totalKHR * EXCHANGE_RATES.KHR_TO_USD);
-            const grandTotalUSD = totals.USD + (totals.KHR * EXCHANGE_RATES.KHR_TO_USD);
+            const categoryTotalUSD = convertToUSD(category.totalUSD, 'USD') + convertToUSD(category.totalKHR, 'KHR');
+            const grandTotalUSD = convertToUSD(totals.USD, 'USD') + convertToUSD(totals.KHR, 'KHR');
             const percentage = grandTotalUSD > 0 ? (categoryTotalUSD / grandTotalUSD) * 100 : 0;
             
             return {
@@ -234,8 +234,8 @@ export const getMonthlySummary = async (req, res) => {
         
         // Sort by total amount (converted to USD for fair comparison) descending
         categoryBreakdown.sort((a, b) => {
-            const aTotalUSD = a.totalUSD + (a.totalKHR * EXCHANGE_RATES.KHR_TO_USD);
-            const bTotalUSD = b.totalUSD + (b.totalKHR * EXCHANGE_RATES.KHR_TO_USD);
+            const aTotalUSD = convertToUSD(a.totalUSD, 'USD') + convertToUSD(a.totalKHR, 'KHR');
+            const bTotalUSD = convertToUSD(b.totalUSD, 'USD') + convertToUSD(b.totalKHR, 'KHR');
             return bTotalUSD - aTotalUSD;
         });
         
@@ -267,25 +267,31 @@ export const getMonthlySummary = async (req, res) => {
  * /api/summary/recent-average:
  *   get:
  *     tags: [Summary]
- *     summary: Get average daily expenses for the most recent 3 months
+ *     summary: Get average daily expenses for the most recent 3 months with proper currency conversion
  *     security:
  *       - bearerAuth: []
  *     parameters:
  *       - in: query
- *         name: currency
+ *         name: displayCurrency
  *         schema:
  *           type: string
- *           enum: [USD, KHR, ALL]
- *           default: ALL
- *         description: Currency filter - USD, KHR, or ALL for both
+ *           enum: [USD, KHR, BOTH]
+ *           default: BOTH
+ *         description: |
+ *           Currency to display results in:
+ *           - USD: Convert all amounts to USD
+ *           - KHR: Convert all amounts to KHR  
+ *           - BOTH: Show both currencies with proper conversion
  *     responses:
  *       200:
- *         description: Recent 3 months average data
+ *         description: Recent 3 months average data with proper currency conversion
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
+ *                 displayCurrency:
+ *                   type: string
  *                 recentMonths:
  *                   type: array
  *                   items:
@@ -313,6 +319,14 @@ export const getMonthlySummary = async (req, res) => {
  *                             type: number
  *                       recordCount:
  *                         type: integer
+ *                       rawTotals:
+ *                         type: object
+ *                         description: Original amounts before conversion
+ *                         properties:
+ *                           USD:
+ *                             type: number
+ *                           KHR:
+ *                             type: number
  *                 overallAverage:
  *                   type: object
  *                   properties:
@@ -333,7 +347,7 @@ export const getMonthlySummary = async (req, res) => {
 export const getRecentAverage = async (req, res) => {
     try {
         const userId = req.user.id;
-        const currency = req.query.currency || 'ALL';
+        const displayCurrency = req.query.displayCurrency || 'BOTH';
         const currentDate = new Date();
         
         const monthNames = [
@@ -343,7 +357,7 @@ export const getRecentAverage = async (req, res) => {
         
         const recentMonths = [];
         let totalDays = 0;
-        let overallTotals = { USD: 0, KHR: 0 };
+        let overallTotalsUSD = 0; // Track everything in USD for accurate averaging
         
         // Get data for the most recent 3 months
         for (let i = 0; i < 3; i++) {
@@ -355,7 +369,7 @@ export const getRecentAverage = async (req, res) => {
             const startDate = new Date(year, month - 1, 1);
             const endDate = new Date(year, month, 0, 23, 59, 59, 999);
             
-            // Build where conditions
+            // Build where conditions - always get ALL records regardless of currency
             let whereConditions = {
                 userId: userId,
                 date: {
@@ -364,57 +378,75 @@ export const getRecentAverage = async (req, res) => {
                 }
             };
             
-            if (currency !== 'ALL') {
-                whereConditions.currency = currency;
-            }
-            
             // Get records for this month
             const records = await db.Record.findAll({
                 where: whereConditions,
                 attributes: ['amount', 'currency']
             });
             
-            // Calculate totals for this month
-            const monthTotals = { USD: 0, KHR: 0 };
+            // Calculate raw totals and convert everything to USD for proper totaling
+            const rawTotals = { USD: 0, KHR: 0 };
+            let monthTotalUSD = 0;
+            
             records.forEach(record => {
-                monthTotals[record.currency] += parseFloat(record.amount);
+                const amount = parseFloat(record.amount);
+                rawTotals[record.currency] += amount;
+                
+                // Convert everything to USD for accurate total calculation
+                monthTotalUSD += convertToUSD(amount, record.currency);
             });
             
-            // Round monthly totals to 2 decimal places
-            monthTotals.USD = Math.round(monthTotals.USD * 100) / 100;
-            monthTotals.KHR = Math.round(monthTotals.KHR * 100) / 100;
+            // Round raw totals to 2 decimal places
+            rawTotals.USD = Math.round(rawTotals.USD * 100) / 100;
+            rawTotals.KHR = Math.round(rawTotals.KHR * 100) / 100;
+            
+            // Calculate proper totals based on display currency
+            let totalExpenses = { USD: 0, KHR: 0 };
+            
+            if (displayCurrency === 'USD') {
+                totalExpenses.USD = Math.round(monthTotalUSD * 100) / 100;
+                totalExpenses.KHR = Math.round(monthTotalUSD * EXCHANGE_RATES.USD_TO_KHR * 100) / 100;
+            } else if (displayCurrency === 'KHR') {
+                const monthTotalKHR = monthTotalUSD * EXCHANGE_RATES.USD_TO_KHR;
+                totalExpenses.USD = Math.round(monthTotalUSD * 100) / 100;
+                totalExpenses.KHR = Math.round(monthTotalKHR * 100) / 100;
+            } else { // BOTH
+                totalExpenses.USD = Math.round(monthTotalUSD * 100) / 100;
+                totalExpenses.KHR = Math.round(monthTotalUSD * EXCHANGE_RATES.USD_TO_KHR * 100) / 100;
+            }
             
             // Calculate days in this month
             const daysInMonth = new Date(year, month, 0).getDate();
             totalDays += daysInMonth;
             
-            // Calculate average per day for this month
+            // Calculate average per day
             const averagePerDay = {
-                USD: Math.round((monthTotals.USD / daysInMonth) * 100) / 100,
-                KHR: Math.round((monthTotals.KHR / daysInMonth) * 100) / 100
+                USD: Math.round((totalExpenses.USD / daysInMonth) * 100) / 100,
+                KHR: Math.round((totalExpenses.KHR / daysInMonth) * 100) / 100
             };
             
-            // Add to overall totals
-            overallTotals.USD += monthTotals.USD;
-            overallTotals.KHR += monthTotals.KHR;
+            // Add to overall total (in USD for accurate calculation)
+            overallTotalsUSD += monthTotalUSD;
             
             recentMonths.push({
                 month,
                 year,
                 monthName: monthNames[month - 1],
-                totalExpenses: monthTotals,
+                totalExpenses,
                 averagePerDay,
-                recordCount: records.length
+                recordCount: records.length,
+                rawTotals // Include raw amounts for transparency
             });
         }
         
         // Calculate overall average across 3 months
         const overallAverage = {
-            USD: Math.round((overallTotals.USD / totalDays) * 100) / 100,
-            KHR: Math.round((overallTotals.KHR / totalDays) * 100) / 100
+            USD: Math.round((overallTotalsUSD / totalDays) * 100) / 100,
+            KHR: Math.round((overallTotalsUSD * EXCHANGE_RATES.USD_TO_KHR / totalDays) * 100) / 100
         };
         
         res.json({
+            displayCurrency,
             recentMonths,
             overallAverage
         });
@@ -525,16 +557,20 @@ export const getTop5Expenses = async (req, res) => {
         
         // Convert amounts to display currency and sort by converted amount
         const recordsWithConvertedAmounts = records.map(record => {
-            let convertedAmount;
+            const originalAmount = parseFloat(record.amount);
             
+            // Use helper function for conversion
+            let convertedAmount;
             if (record.currency === displayCurrency) {
-                convertedAmount = parseFloat(record.amount);
-            } else if (displayCurrency === 'USD' && record.currency === 'KHR') {
-                convertedAmount = parseFloat(record.amount) * EXCHANGE_RATES.KHR_TO_USD;
-            } else if (displayCurrency === 'KHR' && record.currency === 'USD') {
-                convertedAmount = parseFloat(record.amount) * EXCHANGE_RATES.USD_TO_KHR;
+                convertedAmount = originalAmount;
+            } else if (displayCurrency === 'USD') {
+                convertedAmount = convertToUSD(originalAmount, record.currency);
+            } else if (displayCurrency === 'KHR') {
+                // Convert to USD first, then to KHR
+                const usdAmount = convertToUSD(originalAmount, record.currency);
+                convertedAmount = usdAmount * EXCHANGE_RATES.USD_TO_KHR;
             } else {
-                convertedAmount = parseFloat(record.amount);
+                convertedAmount = originalAmount;
             }
             
             // Handle date formatting
@@ -553,7 +589,7 @@ export const getTop5Expenses = async (req, res) => {
                 id: record.id,
                 title: record.title,
                 amount: Math.round(convertedAmount * 100) / 100, // Converted amount
-                originalAmount: parseFloat(record.amount),
+                originalAmount: originalAmount,
                 originalCurrency: record.currency,
                 date: formattedDate, // Safely formatted date
                 categoryName: record.Category?.name || 'Uncategorized',
