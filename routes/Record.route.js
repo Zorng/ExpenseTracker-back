@@ -10,7 +10,8 @@ import {
     getAllRecords,
     createRecord,
     updateRecord,
-    deleteRecord
+    deleteRecord,
+    findRecordById
 } from '../controllers/Record.controller.js';
 
 const router = express.Router();
@@ -19,7 +20,7 @@ const router = express.Router();
 router.use(authenticateToken);
 
 router.get('/', getAllRecords);
-router.get('/id', getRecord);
+router.get('/:id', findRecordById);
 router.post('/', createRecord);
 router.put('/:id', updateRecord);
 router.delete('/:id', deleteRecord);
