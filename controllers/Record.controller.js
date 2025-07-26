@@ -631,4 +631,81 @@ export const deleteRecord = async (req,res) => {
     }
 };
 
+/**
+ * @openapi
+ * /api/records/{id}:
+ *   get:
+ *     tags: [Record]
+ *     summary: Get a single record by ID
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Record ID
+ *     responses:
+ *       200:
+ *         description: Record found successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Record'
+ *       403:
+ *         description: Forbidden - You don't have permission to access this record
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *       404:
+ *         description: Record not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ */
+export const findRecordById = async (req,res) => {
+    try{
+        const userId = req.user.id;
 
+        const recordExists = await db.Record.findByPk(req.params.id);
+
+        if(!recordExists) {
+            return res.status(404).json({error: "Record not found"});
+        }
+        if(recordExists.userId !== userId) {
+            return res.status(403).json({error: "You don't have permission to access this record"});
+        }
+        
+        // Get record with category information for consistency with other endpoints
+        const record = await db.Record.findByPk(req.params.id, {
+            include: [
+                {
+                    model: db.Category,
+                    attributes: ['id', 'name', 'color']
+                }
+            ]
+        });
+        
+        res.json(record);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
