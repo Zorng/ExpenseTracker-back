@@ -249,7 +249,7 @@ router.post('/forgot-password', forgotPassword);
  */
 router.post('/reset-password', resetPassword);
 
-router.get('/me', authenticateToken, requireVerification, getUser);
+router.get('/me', authenticateToken, getUser);
 
 /**
  * @openapi
@@ -269,7 +269,7 @@ router.get('/me', authenticateToken, requireVerification, getUser);
  *       400:
  *         description: Invalid or expired token
  */
-router.get('/verify-email', verifyEmail);
+router.post('/verify-email', verifyEmail);
 
 /**
  * @openapi

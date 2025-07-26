@@ -5,7 +5,7 @@ dotenv.config();
 const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: {
-        user: process.env.EMAIL_USER,
+        user: process.env.EMAIL_USERNAME,
         pass: process.env.EMAIL_PASSWORD
     }
 });
@@ -20,14 +20,14 @@ transporter.verify(function(error, success) {
 });
 
 export const sendVerificationEmail = async (email, token) => {
-    const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${token}`;
+    const verificationUrl = `${process.env.FRONTEND_URL}:${process.env.FRONT_PORT}/verify-email?token=${token}`;
     
     const mailOptions = {
         from: process.env.EMAIL_USER,
         to: email,
         subject: 'Verify Your Email Address',
         html: `
-            <h1>Email Verification</h1>
+            <h1>Registration Verification</h1>
             <p>Please click the link below to verify your email address:</p>
             <a href="${verificationUrl}" style="padding: 10px 20px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 5px;">
                 Verify Email
