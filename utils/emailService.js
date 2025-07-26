@@ -20,7 +20,7 @@ transporter.verify(function(error, success) {
 });
 
 export const sendVerificationEmail = async (email, token) => {
-    const verificationUrl = `${process.env.FRONTEND_URL}:${process.env.FRONT_PORT}/verify-email?token=${token}`;
+    const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${token}`;
     
     const mailOptions = {
         from: process.env.EMAIL_USER,
@@ -29,9 +29,17 @@ export const sendVerificationEmail = async (email, token) => {
         html: `
             <h1>Registration Verification</h1>
             <p>Please click the link below to verify your email address:</p>
-            <a href="${verificationUrl}" style="padding: 10px 20px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 5px;">
-                Verify Email
-            </a>
+            <table role="presentation" border="0" cellspacing="0" cellpadding="0">
+              <tr>
+                <td bgcolor="#2563eb" align="center" style="border-radius: 4px;">
+                  <a href="${verificationUrl}"
+                     target="_blank"
+                     style="font-size: 16px; font-family: sans-serif; color: #ffffff; text-decoration: none; padding: 12px 24px; display: inline-block;">
+                    Verify Email
+                  </a>
+                </td>
+              </tr>
+            </table>
             <p>This link will expire in 24 hours.</p>
             <p>If you did not create an account, please ignore this email.</p>
         `

@@ -12,7 +12,7 @@ import summaryRoutes from './routes/Summary.route.js';
 dotenv.config();
 
 const app = express();
-const frontURL = process.env.FRONTEND_URL+ ':' + process.env.FRONT_PORT;
+const frontURL = process.env.FRONTEND_URL;
 console.log('listen from ', frontURL);
 app.use(cors({
     origin: frontURL,
@@ -20,14 +20,12 @@ app.use(cors({
 app.use(express.json());
 
 app.use('/docs', serveSwagger, setupSwagger);
-app.use('/api/categories', categoryRoutes);
-app.use('/api/users', userRoutes);
 
 // Routes
-app.use('/api/categories', categoryRoutes);
-app.use('/api/records', recordRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/summary', summaryRoutes);
+app.use('/categories', categoryRoutes);
+app.use('/records', recordRoutes);
+app.use('/users', userRoutes);
+app.use('/summary', summaryRoutes);
 
 app.get('/', (req, res) => {
     res.send('Expense Tracker API');
