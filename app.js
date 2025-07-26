@@ -12,7 +12,7 @@ import summaryRoutes from './routes/Summary.route.js';
 dotenv.config();
 
 const app = express();
-const frontURL = process.env.FRONTEND_URL+ ':' + process.env.FRONT_PORT;
+const frontURL = process.env.FRONTEND_URL;
 console.log('listen from ', frontURL);
 app.use(cors({
     origin: frontURL,
