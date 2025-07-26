@@ -12,7 +12,11 @@ import summaryRoutes from './routes/Summary.route.js';
 dotenv.config();
 
 const app = express();
-app.use(cors());
+const frontURL = process.env.FRONTEND_URL+ ':' + process.env.FRONT_PORT;
+console.log('listen from ', frontURL);
+app.use(cors({
+    origin: frontURL,
+}));
 app.use(express.json());
 
 app.use('/docs', serveSwagger, setupSwagger);
