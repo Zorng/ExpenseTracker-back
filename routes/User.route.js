@@ -193,7 +193,7 @@ router.put('/me/password', authenticateToken, requireVerification, updatePasswor
  *       500:
  *         description: Error deleting account
  */
-router.delete('/me', authenticateToken, requireVerification, deleteAccount);
+router.delete('/me', authenticateToken, deleteAccount);
 
 /**
  * @openapi
