@@ -128,8 +128,8 @@ export const getAllRecords = async (req,res) => {
     const userId = req.user.id; // Get authenticated user ID
     const page = parseInt(req.query.page) || 1;
     const pageSize = parseInt(req.query.pageSize) || 10;
-    const sort = req.query.sort === 'desc' ? 'DESC' : 'ASC';
-    const sortBy = req.query.sortBy || 'id';
+    const sort = req.query.sort === 'asc' ? 'ASC' : 'DESC';
+    const sortBy = req.query.sortBy || 'date';
     
     // Filter parameters
     const categoryId = req.query.categoryId;
