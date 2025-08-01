@@ -183,11 +183,22 @@ export const getMonthlySummary = async (req, res) => {
         totals.USD = Math.round(totals.USD * 100) / 100;
         totals.KHR = Math.round(totals.KHR * 100) / 100;
         
-        // Calculate days in month for average calculation
+        // Calculate days for average calculation
         const daysInMonth = new Date(year, month, 0).getDate();
+        
+        // For current month, use actual days elapsed; for past months, use full month
+        let daysForAverage;
+        if (year === currentDate.getFullYear() && month === (currentDate.getMonth() + 1)) {
+            // This is the current month - use actual days elapsed
+            daysForAverage = currentDate.getDate();
+        } else {
+            // This is a past month - use full days in that month
+            daysForAverage = daysInMonth;
+        }
+        
         const averagePerDay = {
-            USD: totals.USD / daysInMonth,
-            KHR: totals.KHR / daysInMonth
+            USD: totals.USD / daysForAverage,
+            KHR: totals.KHR / daysForAverage
         };
         
         // Group records by category for breakdown
@@ -415,14 +426,25 @@ export const getRecentAverage = async (req, res) => {
                 totalExpenses.KHR = Math.round(monthTotalUSD * EXCHANGE_RATES.USD_TO_KHR * 100) / 100;
             }
             
-            // Calculate days in this month
+            // Calculate days to use for average calculation
             const daysInMonth = new Date(year, month, 0).getDate();
-            totalDays += daysInMonth;
+            
+            // For current month, use actual days elapsed; for past months, use full month
+            let daysForAverage;
+            if (year === currentDate.getFullYear() && month === (currentDate.getMonth() + 1)) {
+                // This is the current month - use actual days elapsed
+                daysForAverage = currentDate.getDate();
+            } else {
+                // This is a past month - use full days in that month
+                daysForAverage = daysInMonth;
+            }
+            
+            totalDays += daysForAverage;
             
             // Calculate average per day
             const averagePerDay = {
-                USD: Math.round((totalExpenses.USD / daysInMonth) * 100) / 100,
-                KHR: Math.round((totalExpenses.KHR / daysInMonth) * 100) / 100
+                USD: Math.round((totalExpenses.USD / daysForAverage) * 100) / 100,
+                KHR: Math.round((totalExpenses.KHR / daysForAverage) * 100) / 100
             };
             
             // Add to overall total (in USD for accurate calculation)
