@@ -14,9 +14,7 @@ dotenv.config();
 const app = express();
 const frontURL = process.env.FRONTEND_URL;
 console.log('listen from ', frontURL);
-app.use(cors({
-    origin: frontURL,
-}));
+app.use(cors());
 app.use(express.json());
 
 app.use('/docs', serveSwagger, setupSwagger);
